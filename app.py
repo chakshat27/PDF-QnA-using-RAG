@@ -13,8 +13,8 @@ from pathlib import Path
 import shutil
 
 # Load environment variables
-load_dotenv()
-openai_api_key = os.getenv("OPENAI_API_KEY")
+#load_dotenv()
+openai_api_key = st.secrets["OPENAI_API_KEY"]
 
 # Initialize OpenAI model and embeddings
 llm = ChatOpenAI(openai_api_key=openai_api_key, model="gpt-3.5-turbo")
@@ -80,3 +80,4 @@ if st.button("Get Answer"):
         st.write("**Answer:**", result)
     else:
         st.warning("Upload a PDF and enter a question to proceed.")
+
