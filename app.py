@@ -7,6 +7,8 @@ from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
+from langchain_google_genai import GoogleGenerativeAIEmbeddings
+from langchain_google_genai import ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 import os
 from pathlib import Path
@@ -81,4 +83,5 @@ if st.button("Get Answer"):
         st.write("**Answer:**", result)
     else:
         st.warning("Upload a PDF and enter a question to proceed.")
+
 
