@@ -1,14 +1,11 @@
 import streamlit as st
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.embeddings import OpenAIEmbeddings
 from langchain.vectorstores import FAISS
-from langchain.chat_models import ChatOpenAI
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
-from langchain_google_genai import GoogleGenerativeAIEmbeddings
-from langchain_google_genai import ChatGoogleGenerativeAI
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 from dotenv import load_dotenv
 import os
 from pathlib import Path
@@ -18,10 +15,15 @@ import shutil
 load_dotenv()
 google_api_key = os.getenv("GOOGLE_API_KEY")
 
-# Initialize OpenAI model and embeddings
-embeddings = GoogleGenerativeAIEmbeddings(google_api_key=google_api_key)
-llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=google_api_key)
-
+# Initialize Google Gemini embeddings and LLM
+embeddings = GoogleGenerativeAIEmbeddings(
+    model="models/embedding-001",
+    google_api_key=google_api_key
+)
+llm = ChatGoogleGenerativeAI(
+    model="gemini-pro",
+    google_api_key=google_api_key
+)
 
 # Prompt template
 prompt_template = PromptTemplate.from_template("""
@@ -37,7 +39,7 @@ Answer:
 """)
 
 # Streamlit UI
-st.title("📄 PDF Question Answering with OpenAI")
+st.title("📄 PDF Question Answering with Gemini")
 
 uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
 query = st.text_input("Enter your question")
@@ -57,7 +59,7 @@ def create_vector_store(docs):
     db_path = Path("./vectorstore/db_faiss")
     if db_path.exists() and db_path.is_dir():
         shutil.rmtree(db_path)
-    vectordb = FAISS.from_documents(docs, embedding)
+    vectordb = FAISS.from_documents(docs, embeddings)
     vectordb.save_local(str(db_path))
     return vectordb
 
@@ -83,5 +85,3 @@ if st.button("Get Answer"):
         st.write("**Answer:**", result)
     else:
         st.warning("Upload a PDF and enter a question to proceed.")
-
-
