@@ -18,6 +18,26 @@ from langchain.prompts import PromptTemplate
 from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
 
 # ---- SSL fix for huggingface ----
+# def backend_factory() -> requests.Session:
+#     session = requests.Session()
+#     session.verify = False
+#     return session
+
+# configure_http_backend(backend_factory=backend_factory)
+
+# # ---- Load API key from .env or Streamlit secrets ----
+# load_dotenv()
+# GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
+
+# # ---- Initialize models ----
+# embeddings_model = GoogleGenerativeAIEmbeddings(
+#     model="models/embedding-001",
+#     google_api_key=GOOGLE_API_KEY
+# )
+
+# model = ChatGoogleGenerativeAI(model="gemini-1.5-pro", google_api_key=GOOGLE_API_KEY)
+
+# fixing the SSL issue
 def backend_factory() -> requests.Session:
     session = requests.Session()
     session.verify = False
@@ -25,17 +45,17 @@ def backend_factory() -> requests.Session:
 
 configure_http_backend(backend_factory=backend_factory)
 
-# ---- Load API key from .env or Streamlit secrets ----
-load_dotenv()
-GOOGLE_API_KEY = os.getenv("GOOGLE_API_KEY") or st.secrets.get("GOOGLE_API_KEY")
+# set GEMINI key
+os.environ["GOOGLE_API_KEY"] = " "
 
-# ---- Initialize models ----
+# embeddings and model
 embeddings_model = GoogleGenerativeAIEmbeddings(
     model="models/embedding-001",
-    google_api_key=GOOGLE_API_KEY
+    google_api_key=os.environ["GOOGLE_API_KEY"]
 )
 
-model = ChatGoogleGenerativeAI(model="gemini-1.5-pro", google_api_key=GOOGLE_API_KEY)
+model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+
 
 # ---- Prompt template ----
 prompt_template = PromptTemplate.from_template(
@@ -113,4 +133,5 @@ if st.button("Get Answer"):
         st.write(answer)
     else:
         st.warning("Please upload a PDF and enter a query.")
+
 
