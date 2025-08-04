@@ -10,4 +10,5 @@ huggingface-hub
 langchain-google-genai
 torch
 openai
+tiktoken
 
