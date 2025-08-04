@@ -7,5 +7,6 @@ google-generativeai
 python-dotenv
 requests
 huggingface-hub
-
+langchain-google-genai
 torch
+
