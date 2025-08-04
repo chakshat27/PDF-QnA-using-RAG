@@ -9,4 +9,5 @@ requests
 huggingface-hub
 langchain-google-genai
 torch
+openai
 
