@@ -1,145 +1,82 @@
-from PyPDF2 import PdfReader
-from langchain_community.embeddings import HuggingFaceInstructEmbeddings
-from langchain.vectorstores.faiss import FAISS
-from dotenv import load_dotenv
-from langchain.chains import RetrievalQA
-from langchain.document_loaders import PyPDFDirectoryLoader
-from langchain.text_splitter import RecursiveCharacterTextSplitter
-from langchain.memory import ConversationBufferMemory
-from langchain.chains.question_answering import load_qa_chain
-from langchain.prompts import PromptTemplate
-from langchain_google_genai import ChatGoogleGenerativeAI, GoogleGenerativeAIEmbeddings
-import os
-import requests
-from huggingface_hub import configure_http_backend
 import streamlit as st
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.embeddings import OpenAIEmbeddings
+from langchain.vectorstores import FAISS
+from langchain.chat_models import ChatOpenAI
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from langchain.memory import ConversationBufferMemory
+from dotenv import load_dotenv
+import os
 from pathlib import Path
 import shutil
 
-# fixing the SSL issue
-def backend_factory() -> requests.Session:
-    session = requests.Session()
-    session.verify = False
-    return session
+# Load environment variables
+load_dotenv()
+openai_api_key = os.getenv("OPENAI_API_KEY")
 
-configure_http_backend(backend_factory=backend_factory)
+# Initialize OpenAI model and embeddings
+llm = ChatOpenAI(openai_api_key=openai_api_key, model="gpt-3.5-turbo")
+embedding = OpenAIEmbeddings(openai_api_key=openai_api_key)
 
-# set GEMINI key
-os.environ["GOOGLE_API_KEY"] = "AIzaSyAPfp__IbtvdwPpfDmGBI_nXRqbVwp8X5c"
+# Prompt template
+prompt_template = PromptTemplate.from_template("""
+You are a helpful assistant answering based on the content of uploaded PDFs.
 
-# embeddings and model
-embeddings_model = GoogleGenerativeAIEmbeddings(
-    model="models/embedding-001",
-    google_api_key=os.environ["GOOGLE_API_KEY"]
-)
+Context:
+{context}
 
-model = ChatGoogleGenerativeAI(model="gemini-1.5-pro")
+Question:
+{question}
 
-# prompt
-prompt_temp = PromptTemplate.from_template(
-    """
-    You are an intelligent assistant designed to answer questions based on the content of uploaded PDF documents.
-    Please provide accurate and helpful answers to the questions asked, using the context provided from the documents.
+Answer:
+""")
 
-    Context:
-    {context}
+# Streamlit UI
+st.title("📄 PDF Question Answering with OpenAI")
 
-    Question:
-    {question}
+uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
+query = st.text_input("Enter your question")
 
-    Helpful Answer:
-    """
-)
+def load_pdf(uploaded_file):
+    pdf_reader = PdfReader(uploaded_file)
+    text = ""
+    for page in pdf_reader.pages:
+        text += page.extract_text()
+    return text
 
-prompt_str = prompt_temp.template
-prompt = PromptTemplate(template=prompt_str, input_variables=["history", "context", "question"])
+def split_text(text):
+    splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=200)
+    return splitter.create_documents([text])
 
-# STREAMLIT UI
-st.title("File Upload and Query")
-uploaded_file = st.file_uploader("Choose a file", type=["pdf"])
-query = st.text_input("Enter your query")
-
-# loading data
-def load_data(uploaded_file):
-    save_path = os.path.join("./data/", uploaded_file.name)
-    with open(save_path, "wb") as f:
-        f.write(uploaded_file.getbuffer())
-    loader = PyPDFDirectoryLoader("./data/")
-    docs = loader.load()
-    return docs
-
-# splitting text
-def split_text(docs):
-    text_splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=64)
-    return text_splitter.split_documents(docs)
-
-# storing in vector DB
-def store_VDB(texts):
-    global qa_chain  
-    global memory    
-
-    # Delete old vectorstore
-    db_path = Path("./vectorstores/db_faiss")
+def create_vector_store(docs):
+    db_path = Path("./vectorstore/db_faiss")
     if db_path.exists() and db_path.is_dir():
-        shutil.rmtree(db_path)  # Removes old vectorstore folder
+        shutil.rmtree(db_path)
+    vectordb = FAISS.from_documents(docs, embedding)
+    vectordb.save_local(str(db_path))
+    return vectordb
 
-    vectorstore = FAISS.from_documents(documents=texts, embedding=embeddings_model)
-    vectorstore.save_local(str(db_path))
-
-    # Rebuild memory
-    memory = ConversationBufferMemory(
-        memory_key="history",
-        input_key="question"
-    )
-
-    # Load new DB
-    db = FAISS.load_local(str(db_path), embeddings_model, allow_dangerous_deserialization=True)
-
-    # QA Chain
-    qa_chain = RetrievalQA.from_chain_type(
-        llm=model,
+def load_chain(vectordb):
+    retriever = vectordb.as_retriever(search_kwargs={"k": 3})
+    memory = ConversationBufferMemory(memory_key="history", input_key="question")
+    qa = RetrievalQA.from_chain_type(
+        llm=llm,
         chain_type="stuff",
-        retriever=db.as_retriever(search_kwargs={'k': 2}),
+        retriever=retriever,
         return_source_documents=True,
-        chain_type_kwargs={
-            "verbose": True,
-            "prompt": prompt,
-            "memory": memory,
-        },
+        chain_type_kwargs={"prompt": prompt_template, "memory": memory}
     )
+    return qa
 
-    return db
-
-# defining QA chain
-def create_chain(vectorstore):
-    return RetrievalQA.from_chain_type(
-        llm=model,
-        chain_type="stuff",
-        retriever=vectorstore.as_retriever(search_kwargs={"k": 2}),
-        return_source_documents=True,
-        chain_type_kwargs={
-            "verbose": True,
-            "prompt": prompt,
-            "memory": ConversationBufferMemory(memory_key="history", input_key="question"),
-        },
-    )
-
-# answering query
-def query_qa_chain(qa_chain, query):
-    response = qa_chain({"query": query})
-    return response['result']
-
-# main logic
 if st.button("Get Answer"):
     if uploaded_file is not None and query:
-        docs = load_data(uploaded_file)
-        texts = split_text(docs)
-
-        db_path = Path("./vectorstores/db_faiss")
-        db = store_VDB(texts)
-        qa_chain = create_chain(db)
-        result = query_qa_chain(qa_chain, query)
-        st.write("Answer:", result)
+        text = load_pdf(uploaded_file)
+        docs = split_text(text)
+        vectordb = create_vector_store(docs)
+        qa_chain = load_chain(vectordb)
+        result = qa_chain.run(query)
+        st.write("**Answer:**", result)
     else:
-        st.write("Please upload a file and enter a query.")
-
+        st.warning("Upload a PDF and enter a question to proceed.")
