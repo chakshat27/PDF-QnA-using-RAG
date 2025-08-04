@@ -13,12 +13,13 @@ from pathlib import Path
 import shutil
 
 # Load environment variables
-#load_dotenv()
-openai_api_key = st.secrets["OPENAI_API_KEY"]
+load_dotenv()
+google_api_key = os.getenv("GOOGLE_API_KEY")
 
 # Initialize OpenAI model and embeddings
-llm = ChatOpenAI(openai_api_key=openai_api_key, model="gpt-3.5-turbo")
-embedding = OpenAIEmbeddings(openai_api_key=openai_api_key)
+embeddings = GoogleGenerativeAIEmbeddings(google_api_key=google_api_key)
+llm = ChatGoogleGenerativeAI(model="gemini-pro", google_api_key=google_api_key)
+
 
 # Prompt template
 prompt_template = PromptTemplate.from_template("""
