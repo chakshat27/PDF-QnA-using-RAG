@@ -25,7 +25,7 @@ def backend_factory() -> requests.Session:
 configure_http_backend(backend_factory=backend_factory)
 
 # set GEMINI key
-os.environ["GOOGLE_API_KEY"] = " "
+os.environ["GOOGLE_API_KEY"] = "AIzaSyAPfp__IbtvdwPpfDmGBI_nXRqbVwp8X5c"
 
 # embeddings and model
 embeddings_model = GoogleGenerativeAIEmbeddings(
@@ -142,3 +142,4 @@ if st.button("Get Answer"):
         st.write("Answer:", result)
     else:
         st.write("Please upload a file and enter a query.")
+
