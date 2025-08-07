@@ -11,4 +11,5 @@ langchain-google-genai
 torch
 openai
 tiktoken
+nest_asyncio
 
