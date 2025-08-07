@@ -11,13 +11,14 @@ import time
 import asyncio
 import nest_asyncio
 import logging
+import random
+
+# Apply nest_asyncio to fix event loop issues
+nest_asyncio.apply()
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
-
-# Apply nest_asyncio to fix event loop issues
-nest_asyncio.apply()
 
 # Configuration
 GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
@@ -72,34 +73,40 @@ def load_pdf_text(uploaded_file):
 
 def split_text(text):
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=800,  # Slightly reduced chunk size
-        chunk_overlap=100,
+        chunk_size=600,  # Optimized for Google API
+        chunk_overlap=80,
         length_function=len
     )
     return splitter.split_text(text)
 
+def embed_with_retry(texts, max_retries=5):
+    """Embed documents with robust retry logic"""
+    attempts = 0
+    while attempts < max_retries:
+        try:
+            return embeddings_model.embed_documents(texts)
+        except Exception as e:
+            attempts += 1
+            if attempts < max_retries:
+                wait_time = (2 ** attempts) + random.uniform(0, 1)  # Exponential backoff with jitter
+                logger.warning(f"Embedding failed, retry {attempts}/{max_retries} in {wait_time:.1f}s. Error: {str(e)}")
+                time.sleep(wait_time)
+            else:
+                logger.error(f"Embedding failed after {max_retries} attempts")
+                raise
+
 def create_vectorstore_from_texts(texts):
-    """Create vector store with batch embedding and retry logic"""
+    """Create vector store with smart batch embedding"""
     # Use smaller batch size for embedding
-    batch_size = 5
+    batch_size = 3  # Reduced batch size for Google API
     all_embeddings = []
     
     for i in range(0, len(texts), batch_size):
         batch_texts = texts[i:i + batch_size]
-        retries = 3
-        for attempt in range(retries):
-            try:
-                batch_embeddings = embeddings_model.embed_documents(batch_texts)
-                all_embeddings.extend(batch_embeddings)
-                break
-            except Exception as e:
-                if attempt < retries - 1:
-                    wait_time = (2 ** attempt) * 2  # Exponential backoff: 2, 4, 8 seconds
-                    logger.warning(f"Embedding failed, retry {attempt+1}/{retries} in {wait_time}s. Error: {str(e)}")
-                    time.sleep(wait_time)
-                else:
-                    logger.error(f"Embedding failed after {retries} attempts")
-                    raise
+        logger.info(f"Embedding batch {i//batch_size + 1}/{(len(texts)-1)//batch_size + 1} ({len(batch_texts)} chunks)")
+        batch_embeddings = embed_with_retry(batch_texts)
+        all_embeddings.extend(batch_embeddings)
+        time.sleep(0.5)  # Brief pause between batches
     
     # Create FAISS index from embeddings
     return FAISS.from_embeddings(
@@ -139,35 +146,51 @@ if st.button("Get Answer"):
                 else:
                     with st.spinner(f"Processing {uploaded_file.name}..."):
                         text = load_pdf_text(uploaded_file)
+                        if not text.strip():
+                            st.warning(f"No text extracted from {uploaded_file.name}. Skipping.")
+                            continue
+                            
                         docs = split_text(text)
                         st.info(f"Split {uploaded_file.name} into {len(docs)} chunks")
-                        vectordb = create_vectorstore_from_texts(docs)
-                        vectordb.save_local(str(db_path))
-                        st.success(f"Created vector store for: {uploaded_file.name}")
+                        
+                        try:
+                            vectordb = create_vectorstore_from_texts(docs)
+                            vectordb.save_local(str(db_path))
+                            st.success(f"Created vector store for: {uploaded_file.name}")
+                        except Exception as e:
+                            st.error(f"Failed to create vector store for {uploaded_file.name}: {str(e)}")
+                            continue
                 
                 all_vectorstores.append(vectordb)
             
+            if not all_vectorstores:
+                st.error("No valid vector stores created. Please check your PDFs.")
+                st.stop()
+            
             # Merge vector stores
-            if all_vectorstores:
+            if len(all_vectorstores) > 1:
+                with st.spinner("Combining documents..."):
+                    combined_vectorstore = all_vectorstores[0]
+                    for store in all_vectorstores[1:]:
+                        combined_vectorstore.merge_from(store)
+            else:
                 combined_vectorstore = all_vectorstores[0]
-                for store in all_vectorstores[1:]:
-                    combined_vectorstore.merge_from(store)
-                
-                # Perform QA
-                with st.spinner("Generating answer..."):
-                    try:
-                        qa_chain = load_chain(combined_vectorstore)
-                        result = qa_chain({"query": query})
-                        st.subheader("Answer:")
-                        st.write(result["result"])
-                        
-                        # Show sources
-                        with st.expander("Source Documents"):
-                            for i, doc in enumerate(result["source_documents"]):
-                                st.markdown(f"**Source {i+1}:**")
-                                st.caption(doc.page_content)
-                                st.write("---")
-                    except Exception as e:
-                        st.error(f"Error generating answer: {str(e)}")
+            
+            # Perform QA
+            with st.spinner("Generating answer..."):
+                try:
+                    qa_chain = load_chain(combined_vectorstore)
+                    result = qa_chain({"query": query})
+                    st.subheader("Answer:")
+                    st.write(result["result"])
+                    
+                    # Show sources
+                    with st.expander("Source Documents"):
+                        for i, doc in enumerate(result["source_documents"]):
+                            st.markdown(f"**Source {i+1}:**")
+                            st.caption(doc.page_content)
+                            st.write("---")
+                except Exception as e:
+                    st.error(f"Error generating answer: {str(e)}")
     else:
         st.warning("Please upload at least one PDF and enter a question.")
