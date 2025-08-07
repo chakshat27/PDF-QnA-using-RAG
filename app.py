@@ -11,9 +11,9 @@ import os
 from pathlib import Path
 import shutil
 
-# Load environment variables
-load_dotenv()
-google_api_key = os.getenv("GOOGLE_API_KEY")
+# # Load environment variables
+# load_dotenv()
+# google_api_key = os.getenv("GOOGLE_API_KEY")
 
 # Initialize Google Gemini embeddings and LLM
 embeddings = GoogleGenerativeAIEmbeddings(
@@ -85,3 +85,4 @@ if st.button("Get Answer"):
         st.write("**Answer:**", result)
     else:
         st.warning("Upload a PDF and enter a question to proceed.")
+
