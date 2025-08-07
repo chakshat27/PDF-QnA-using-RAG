@@ -9,6 +9,17 @@ from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGener
 import os
 from pathlib import Path
 import shutil
+import asyncio
+from dotenv import load_dotenv
+
+# Ensure there's an event loop for gRPC async client
+try:
+    asyncio.get_running_loop()
+except RuntimeError:
+    asyncio.set_event_loop(asyncio.new_event_loop())
+
+from langchain_google_genai import ChatGoogleGenerativeAI
+
 
 # Load Google API key from secrets
 google_api_key = st.secrets["GOOGLE_API_KEY"]
@@ -86,3 +97,4 @@ if st.button("Get Answer"):
             st.write("**Answer:**", result)
     else:
         st.warning("Please upload a PDF and enter a question.")
+
