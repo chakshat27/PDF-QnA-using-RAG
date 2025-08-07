@@ -69,10 +69,10 @@ def load_pdf_text(uploaded_file):
     return text
 
 def split_text(text):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=50)
+    splitter = RecursiveCharacterTextSplitter(chunk_size=200, chunk_overlap=50)
     return splitter.create_documents([text])
 
-def embed_documents_in_batches(docs, batch_size=5, retries=3):
+def embed_documents_in_batches(docs, batch_size=2, retries=3):
     texts = [doc.page_content for doc in docs]
     all_embeddings = []
     for i in range(0, len(texts), batch_size):
@@ -145,3 +145,4 @@ if st.button("Get Answer"):
             st.write("**Answer:**", result)
     else:
         st.warning("Please upload at least one PDF and enter a question.")
+
