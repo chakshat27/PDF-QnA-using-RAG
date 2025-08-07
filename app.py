@@ -4,36 +4,31 @@ from langchain.text_splitter import RecursiveCharacterTextSplitter
 from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
-from langchain.memory import ConversationBufferMemory
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
 import os
 from pathlib import Path
-import shutil
-import asyncio
 import hashlib
 import time
 
-# Ensure there's an event loop for gRPC async client
-try:
-    asyncio.get_running_loop()
-except RuntimeError:
-    asyncio.set_event_loop(asyncio.new_event_loop())
+# Configuration
+GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+VECTORSTORE_DIR = Path("./vectorstore")
+VECTORSTORE_DIR.mkdir(exist_ok=True)
 
-# Load Google API key from secrets
-google_api_key = st.secrets["GOOGLE_API_KEY"]
-
-# Initialize embeddings and language model
+# Initialize models with increased timeout
 embeddings_model = GoogleGenerativeAIEmbeddings(
     model="models/embedding-001",
-    google_api_key=google_api_key
+    google_api_key=GOOGLE_API_KEY,
+    request_options={'timeout': 180}  # Increased timeout to 180 seconds
 )
 
 llm = ChatGoogleGenerativeAI(
     model="gemini-pro",
-    google_api_key=google_api_key
+    google_api_key=GOOGLE_API_KEY,
+    request_options={'timeout': 180}  # Increased timeout to 180 seconds
 )
 
-# Define prompt
+# Prompt template
 prompt_template = PromptTemplate.from_template("""
 You are a helpful assistant answering based on the content of uploaded PDFs.
 
@@ -51,11 +46,7 @@ st.title("📄 PDF Question Answering with Gemini")
 uploaded_files = st.file_uploader("Upload one or more PDFs", type="pdf", accept_multiple_files=True)
 query = st.text_input("Enter your question")
 
-# Directory to store vector stores
-VECTORSTORE_DIR = Path("./vectorstore")
-VECTORSTORE_DIR.mkdir(exist_ok=True)
-
-# Helpers
+# Helper functions
 def generate_pdf_hash(file_bytes):
     return hashlib.md5(file_bytes).hexdigest()
 
@@ -69,66 +60,41 @@ def load_pdf_text(uploaded_file):
     return text
 
 def split_text(text):
-    splitter = RecursiveCharacterTextSplitter(chunk_size=300, chunk_overlap=64)
-    return splitter.create_documents([text])
-
-def embed_documents_in_batches(docs, batch_size=2, retries=3):
-    texts = [doc.page_content for doc in docs]
-    all_embeddings = []
-    for i in range(0, len(texts), batch_size):
-        batch = texts[i:i + batch_size]
-        attempt = 0
-        while attempt < retries:
-            try:
-                batch_embeddings = embeddings_model.embed_documents(batch)
-                all_embeddings.extend(batch_embeddings)
-                break
-            except Exception as e:
-                st.warning(f"Retry {attempt + 1}/{retries} after error: {e}")
-                time.sleep(2)
-                attempt += 1
-        else:
-            st.error("Failed to embed after multiple retries.")
-            raise RuntimeError("Embedding failed.")
-    return all_embeddings
+    splitter = RecursiveCharacterTextSplitter(
+        chunk_size=1000,  # Increased chunk size
+        chunk_overlap=200,
+        length_function=len
+    )
+    return splitter.split_text(text)
 
 def create_vectorstore_from_docs(docs):
-    embeddings = embed_documents_in_batches(docs)
-    return FAISS.from_embeddings(embeddings, docs)
-
-def load_or_create_vectorstore(docs, unique_id):
-    db_path = VECTORSTORE_DIR / f"db_faiss_{unique_id}"
-    if db_path.exists():
-        vectordb = FAISS.load_local(str(db_path), embeddings_model)
-    else:
-        vectordb = create_vectorstore_from_docs(docs)
-        vectordb.save_local(str(db_path))
-    return vectordb
+    return FAISS.from_texts(docs, embeddings_model)
 
 def load_chain(vectordb):
     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
-    memory = ConversationBufferMemory(memory_key="history", input_key="question")
     qa = RetrievalQA.from_chain_type(
         llm=llm,
         chain_type="stuff",
         retriever=retriever,
         return_source_documents=True,
-        chain_type_kwargs={"prompt": prompt_template, "memory": memory}
+        chain_type_kwargs={"prompt": prompt_template}
     )
     return qa
 
-# Main logic
+# Main processing
 if st.button("Get Answer"):
     if uploaded_files and query:
         with st.spinner("Processing..."):
-            combined_docs = []
-
+            all_vectorstores = []
+            
             for uploaded_file in uploaded_files:
                 file_bytes = uploaded_file.read()
                 file_hash = generate_pdf_hash(file_bytes)
-                uploaded_file.seek(0)  # Reset for PDFReader
-
+                uploaded_file.seek(0)  # Reset file pointer
+                
                 db_path = VECTORSTORE_DIR / f"db_faiss_{file_hash}"
+                
+                # Load existing or create new vector store
                 if db_path.exists():
                     vectordb = FAISS.load_local(str(db_path), embeddings_model)
                 else:
@@ -136,14 +102,23 @@ if st.button("Get Answer"):
                     docs = split_text(text)
                     vectordb = create_vectorstore_from_docs(docs)
                     vectordb.save_local(str(db_path))
-
-                combined_docs.extend(vectordb.similarity_search(query, k=3))
-
-            temp_vectordb = create_vectorstore_from_docs(combined_docs)
-            qa_chain = load_chain(temp_vectordb)
-            result = qa_chain.run(query)
-            st.write("**Answer:**", result)
+                
+                all_vectorstores.append(vectordb)
+            
+            # Merge vector stores
+            if all_vectorstores:
+                combined_vectorstore = all_vectorstores[0]
+                for store in all_vectorstores[1:]:
+                    combined_vectorstore.merge_from(store)
+                
+                # Perform QA
+                qa_chain = load_chain(combined_vectorstore)
+                result = qa_chain({"query": query})
+                st.write("**Answer:**", result["result"])
+                # # Optional: Show sources
+                # with st.expander("Source Documents"):
+                #     for doc in result["source_documents"]:
+                #         st.write(doc.page_content)
+                #         st.write("---")
     else:
         st.warning("Please upload at least one PDF and enter a question.")
-
-
