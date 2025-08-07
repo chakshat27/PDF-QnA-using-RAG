@@ -6,16 +6,14 @@ from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain.memory import ConversationBufferMemory
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-from dotenv import load_dotenv
 import os
 from pathlib import Path
 import shutil
 
-# # Load environment variables
-# load_dotenv()
-# google_api_key = os.getenv("GOOGLE_API_KEY")
+# Load Google API key from secrets
+google_api_key = st.secrets["GOOGLE_API_KEY"]
 
-# Initialize Google Gemini embeddings and LLM
+# Initialize embeddings and language model
 embeddings = GoogleGenerativeAIEmbeddings(
     model="models/embedding-001",
     google_api_key=google_api_key
@@ -25,7 +23,7 @@ llm = ChatGoogleGenerativeAI(
     google_api_key=google_api_key
 )
 
-# Prompt template
+# Define prompt
 prompt_template = PromptTemplate.from_template("""
 You are a helpful assistant answering based on the content of uploaded PDFs.
 
@@ -45,10 +43,12 @@ uploaded_file = st.file_uploader("Upload a PDF", type="pdf")
 query = st.text_input("Enter your question")
 
 def load_pdf(uploaded_file):
-    pdf_reader = PdfReader(uploaded_file)
     text = ""
+    pdf_reader = PdfReader(uploaded_file)
     for page in pdf_reader.pages:
-        text += page.extract_text()
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text
     return text
 
 def split_text(text):
@@ -57,7 +57,7 @@ def split_text(text):
 
 def create_vector_store(docs):
     db_path = Path("./vectorstore/db_faiss")
-    if db_path.exists() and db_path.is_dir():
+    if db_path.exists():
         shutil.rmtree(db_path)
     vectordb = FAISS.from_documents(docs, embeddings)
     vectordb.save_local(str(db_path))
@@ -76,13 +76,13 @@ def load_chain(vectordb):
     return qa
 
 if st.button("Get Answer"):
-    if uploaded_file is not None and query:
-        text = load_pdf(uploaded_file)
-        docs = split_text(text)
-        vectordb = create_vector_store(docs)
-        qa_chain = load_chain(vectordb)
-        result = qa_chain.run(query)
-        st.write("**Answer:**", result)
+    if uploaded_file and query:
+        with st.spinner("Processing..."):
+            text = load_pdf(uploaded_file)
+            docs = split_text(text)
+            vectordb = create_vector_store(docs)
+            qa_chain = load_chain(vectordb)
+            result = qa_chain.run(query)
+            st.write("**Answer:**", result)
     else:
-        st.warning("Upload a PDF and enter a question to proceed.")
-
+        st.warning("Please upload a PDF and enter a question.")
