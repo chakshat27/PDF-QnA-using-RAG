@@ -5,28 +5,34 @@ from langchain.vectorstores import FAISS
 from langchain.chains import RetrievalQA
 from langchain.prompts import PromptTemplate
 from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
-import os
 from pathlib import Path
 import hashlib
 import time
+import asyncio
+import nest_asyncio
+
+# Apply nest_asyncio to fix event loop issues
+nest_asyncio.apply()
 
 # Configuration
 GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 VECTORSTORE_DIR = Path("./vectorstore")
 VECTORSTORE_DIR.mkdir(exist_ok=True)
 
-# Initialize models with increased timeout
+# Initialize embeddings model
 embeddings_model = GoogleGenerativeAIEmbeddings(
     model="models/embedding-001",
     google_api_key=GOOGLE_API_KEY,
-    request_options={'timeout': 180}  # Increased timeout to 180 seconds
+    request_options={'timeout': 180}
 )
 
-llm = ChatGoogleGenerativeAI(
-    model="gemini-pro",
-    google_api_key=GOOGLE_API_KEY,
-    request_options={'timeout': 180}  # Increased timeout to 180 seconds
-)
+# Initialize language model with explicit event loop handling
+def create_llm():
+    return ChatGoogleGenerativeAI(
+        model="gemini-pro",
+        google_api_key=GOOGLE_API_KEY,
+        request_options={'timeout': 180}
+    )
 
 # Prompt template
 prompt_template = PromptTemplate.from_template("""
@@ -61,7 +67,7 @@ def load_pdf_text(uploaded_file):
 
 def split_text(text):
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,  # Increased chunk size
+        chunk_size=1000,
         chunk_overlap=200,
         length_function=len
     )
@@ -71,6 +77,7 @@ def create_vectorstore_from_docs(docs):
     return FAISS.from_texts(docs, embeddings_model)
 
 def load_chain(vectordb):
+    llm = create_llm()
     retriever = vectordb.as_retriever(search_kwargs={"k": 3})
     qa = RetrievalQA.from_chain_type(
         llm=llm,
@@ -115,10 +122,10 @@ if st.button("Get Answer"):
                 qa_chain = load_chain(combined_vectorstore)
                 result = qa_chain({"query": query})
                 st.write("**Answer:**", result["result"])
-                # # Optional: Show sources
-                # with st.expander("Source Documents"):
-                #     for doc in result["source_documents"]:
-                #         st.write(doc.page_content)
-                #         st.write("---")
+                # Optional: Show sources
+                with st.expander("Source Documents"):
+                    for doc in result["source_documents"]:
+                        st.write(doc.page_content)
+                        st.write("---")
     else:
         st.warning("Please upload at least one PDF and enter a question.")
