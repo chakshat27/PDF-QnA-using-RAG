@@ -10,6 +10,11 @@ import hashlib
 import time
 import asyncio
 import nest_asyncio
+import logging
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
 
 # Apply nest_asyncio to fix event loop issues
 nest_asyncio.apply()
@@ -19,11 +24,11 @@ GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
 VECTORSTORE_DIR = Path("./vectorstore")
 VECTORSTORE_DIR.mkdir(exist_ok=True)
 
-# Initialize embeddings model
+# Initialize embeddings model with increased timeout
 embeddings_model = GoogleGenerativeAIEmbeddings(
     model="models/embedding-001",
     google_api_key=GOOGLE_API_KEY,
-    request_options={'timeout': 180}
+    request_options={'timeout': 300}  # Increased timeout to 300 seconds
 )
 
 # Initialize language model with explicit event loop handling
@@ -31,7 +36,7 @@ def create_llm():
     return ChatGoogleGenerativeAI(
         model="gemini-pro",
         google_api_key=GOOGLE_API_KEY,
-        request_options={'timeout': 180}
+        request_options={'timeout': 300}  # Increased timeout to 300 seconds
     )
 
 # Prompt template
@@ -67,14 +72,40 @@ def load_pdf_text(uploaded_file):
 
 def split_text(text):
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=1000,
-        chunk_overlap=200,
+        chunk_size=800,  # Slightly reduced chunk size
+        chunk_overlap=100,
         length_function=len
     )
     return splitter.split_text(text)
 
-def create_vectorstore_from_docs(docs):
-    return FAISS.from_texts(docs, embeddings_model)
+def create_vectorstore_from_texts(texts):
+    """Create vector store with batch embedding and retry logic"""
+    # Use smaller batch size for embedding
+    batch_size = 5
+    all_embeddings = []
+    
+    for i in range(0, len(texts), batch_size):
+        batch_texts = texts[i:i + batch_size]
+        retries = 3
+        for attempt in range(retries):
+            try:
+                batch_embeddings = embeddings_model.embed_documents(batch_texts)
+                all_embeddings.extend(batch_embeddings)
+                break
+            except Exception as e:
+                if attempt < retries - 1:
+                    wait_time = (2 ** attempt) * 2  # Exponential backoff: 2, 4, 8 seconds
+                    logger.warning(f"Embedding failed, retry {attempt+1}/{retries} in {wait_time}s. Error: {str(e)}")
+                    time.sleep(wait_time)
+                else:
+                    logger.error(f"Embedding failed after {retries} attempts")
+                    raise
+    
+    # Create FAISS index from embeddings
+    return FAISS.from_embeddings(
+        text_embeddings=list(zip(texts, all_embeddings)),
+        embedding=embeddings_model
+    )
 
 def load_chain(vectordb):
     llm = create_llm()
@@ -103,12 +134,16 @@ if st.button("Get Answer"):
                 
                 # Load existing or create new vector store
                 if db_path.exists():
+                    st.info(f"Using cached vector store for: {uploaded_file.name}")
                     vectordb = FAISS.load_local(str(db_path), embeddings_model)
                 else:
-                    text = load_pdf_text(uploaded_file)
-                    docs = split_text(text)
-                    vectordb = create_vectorstore_from_docs(docs)
-                    vectordb.save_local(str(db_path))
+                    with st.spinner(f"Processing {uploaded_file.name}..."):
+                        text = load_pdf_text(uploaded_file)
+                        docs = split_text(text)
+                        st.info(f"Split {uploaded_file.name} into {len(docs)} chunks")
+                        vectordb = create_vectorstore_from_texts(docs)
+                        vectordb.save_local(str(db_path))
+                        st.success(f"Created vector store for: {uploaded_file.name}")
                 
                 all_vectorstores.append(vectordb)
             
@@ -119,13 +154,20 @@ if st.button("Get Answer"):
                     combined_vectorstore.merge_from(store)
                 
                 # Perform QA
-                qa_chain = load_chain(combined_vectorstore)
-                result = qa_chain({"query": query})
-                st.write("**Answer:**", result["result"])
-                # Optional: Show sources
-                with st.expander("Source Documents"):
-                    for doc in result["source_documents"]:
-                        st.write(doc.page_content)
-                        st.write("---")
+                with st.spinner("Generating answer..."):
+                    try:
+                        qa_chain = load_chain(combined_vectorstore)
+                        result = qa_chain({"query": query})
+                        st.subheader("Answer:")
+                        st.write(result["result"])
+                        
+                        # Show sources
+                        with st.expander("Source Documents"):
+                            for i, doc in enumerate(result["source_documents"]):
+                                st.markdown(f"**Source {i+1}:**")
+                                st.caption(doc.page_content)
+                                st.write("---")
+                    except Exception as e:
+                        st.error(f"Error generating answer: {str(e)}")
     else:
         st.warning("Please upload at least one PDF and enter a question.")
