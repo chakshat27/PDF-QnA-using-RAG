@@ -1,6 +1,6 @@
 streamlit
 PyPDF2
-langchain==0.2.14
+langchain==0.2.15
 langchain-community==0.2.15
 faiss-cpu
 google-generativeai
@@ -9,3 +9,4 @@ requests
 langchain-google-genai==1.0.10
 nest_asyncio
 orjson==3.10.6
+
