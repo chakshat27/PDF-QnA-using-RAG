@@ -9,4 +9,3 @@ requests
 langchain-google-genai==1.0.10
 nest_asyncio
 orjson==3.10.6
-
