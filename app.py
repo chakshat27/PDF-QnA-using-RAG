@@ -232,7 +232,7 @@ embeddings_model = GoogleGenerativeAIEmbeddings(
 
 def create_llm():
     return ChatGoogleGenerativeAI(
-        model="gemini-pro",
+        model="models/gemini-2.5-pro",
         google_api_key=GOOGLE_API_KEY,
         request_options={'timeout': 60}
     )
@@ -356,4 +356,5 @@ if st.button("Get Answer"):
 
     else:
         st.warning("Please upload PDFs and enter a question.")
+
 
