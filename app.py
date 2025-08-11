@@ -315,7 +315,8 @@ if st.button("Get Answer"):
 
             if db_path.exists():
                 st.info(f"Loading cached vector store for {uploaded_file.name}")
-                vectordb = FAISS.load_local(str(db_path), embeddings_model)
+                vectordb = FAISS.load_local(str(db_path), embeddings_model,
+                allow_dangerous_deserialization=True)
             else:
                 st.info(f"Extracting text from {uploaded_file.name}...")
                 text = load_pdf_text(uploaded_file)
@@ -356,5 +357,6 @@ if st.button("Get Answer"):
 
     else:
         st.warning("Please upload PDFs and enter a question.")
+
 
 
