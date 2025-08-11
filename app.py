@@ -249,7 +249,7 @@ Question:
 Answer:
 """)
 
-st.title("📄 PDF Question Answering with Gemini (Stable Embeddings)")
+st.title("📄 PDF Question Answering with Gemini (Minimal Logs)")
 
 uploaded_files = st.file_uploader("Upload one or more PDFs", type="pdf", accept_multiple_files=True)
 query = st.text_input("Enter your question")
@@ -258,8 +258,8 @@ def generate_pdf_hash(file_bytes):
     return hashlib.md5(file_bytes).hexdigest()
 
 def load_pdf_text(uploaded_file):
-    text = ""
     uploaded_file.seek(0)
+    text = ""
     pdf_reader = PdfReader(uploaded_file)
     for page in pdf_reader.pages:
         page_text = page.extract_text()
@@ -269,20 +269,20 @@ def load_pdf_text(uploaded_file):
 
 def split_text(text):
     splitter = RecursiveCharacterTextSplitter(
-        chunk_size=500,  # smaller chunks
+        chunk_size=500,
         chunk_overlap=50,
         length_function=len
     )
     return splitter.split_text(text)
 
 def create_vectorstore_from_texts(texts):
+    st.info("Embeddings...")
     all_embeddings = []
-    for idx, chunk in enumerate(texts, start=1):
-        st.info(f"Embedding chunk {idx}/{len(texts)}")
+    for chunk in texts:
         try:
             emb = embeddings_model.embed_documents([chunk])
         except Exception as e:
-            st.error(f"Embedding failed for chunk {idx}: {e}")
+            st.error(f"Embedding failed: {e}")
             st.stop()
         all_embeddings.extend(emb)
         time.sleep(0.2)
@@ -314,11 +314,10 @@ if st.button("Get Answer"):
             db_path = VECTORSTORE_DIR / f"db_faiss_{file_hash}"
 
             if db_path.exists():
-                st.info(f"Loading cached vector store for {uploaded_file.name}")
                 vectordb = FAISS.load_local(str(db_path), embeddings_model,
-                allow_dangerous_deserialization=True)
+                                            allow_dangerous_deserialization=True)
             else:
-                st.info(f"Extracting text from {uploaded_file.name}...")
+                st.info("Extracting text...")
                 text = load_pdf_text(uploaded_file)
                 if not text.strip():
                     st.warning("No text extracted, skipping.")
@@ -330,7 +329,7 @@ if st.button("Get Answer"):
                 st.info("Creating vector store...")
                 vectordb = create_vectorstore_from_texts(docs)
                 vectordb.save_local(str(db_path))
-                st.success(f"Vector store created for {uploaded_file.name}")
+                st.success("Vector store created.")
 
             all_vectorstores.append(vectordb)
 
@@ -357,6 +356,8 @@ if st.button("Get Answer"):
 
     else:
         st.warning("Please upload PDFs and enter a question.")
+
+
 
 
 
