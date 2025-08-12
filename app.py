@@ -249,7 +249,7 @@ Question:
 Answer:
 """)
 
-st.title("📄 PDF Question Answering with Gemini (Minimal Logs)")
+st.title("📄 PDF Q/A using RAG")
 
 uploaded_files = st.file_uploader("Upload one or more PDFs", type="pdf", accept_multiple_files=True)
 query = st.text_input("Enter your question")
@@ -356,6 +356,7 @@ if st.button("Get Answer"):
 
     else:
         st.warning("Please upload PDFs and enter a question.")
+
 
 
 
