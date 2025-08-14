@@ -1,3 +1,5 @@
+#RAG
+
 # import streamlit as st
 # from PyPDF2 import PdfReader
 # from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -158,6 +160,10 @@
 
 
 
+
+#RAG + LLM
+
+
 import streamlit as st
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -295,7 +301,8 @@ if st.button("Get Answer") and query:
             if not all_vectorstores:
                 st.warning("No text found in PDFs. Switching to general LLM mode.")
                 llm = create_llm()
-                answer = llm.predict(query)
+                response = llm.invoke(query)
+                answer = response.content if hasattr(response, "content") else str(response)
                 st.subheader("Answer:")
                 st.write(answer)
             else:
@@ -331,6 +338,7 @@ if st.button("Get Answer") and query:
 
     except Exception as e:
         st.error(f"Error:\n{traceback.format_exc()}")
+
 
 
 
