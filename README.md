@@ -1,70 +1,79 @@
-Here’s a detailed `README.md` you can use for your GitHub repository for the RAG + LLM Streamlit project:
+Here’s a polished `README.md` for your project based on your code, following the style of the example you provided but without the video demo section:
 
 ````markdown
-# 📄 PDF Q/A and General Q/A using RAG + Google Gemini
+# PDF + General Q/A Application using RAG and Google Gemini
 
-This is a **Streamlit application** for answering questions from uploaded PDFs using **Retrieval-Augmented Generation (RAG)** with **Google Generative AI**. The app can also answer general questions using the Gemini LLM if no PDFs are uploaded or the uploaded PDFs do not contain relevant information.
-
----
-
-## Features
-
-- Upload one or multiple PDF files and ask questions related to their content.
-- Automatically extract text from PDFs and create a **vector store** for efficient retrieval.
-- Generate embeddings using **GoogleGenerativeAIEmbeddings**.
-- Use **FAISS** for storing and retrieving embeddings.
-- Combine PDF-based Q/A with a general-purpose **Gemini LLM** to answer questions beyond the uploaded documents.
-- Display source documents for transparency and context.
+This Streamlit application allows users to ask questions from uploaded PDFs using **Retrieval-Augmented Generation (RAG)**. If no PDFs are uploaded or no relevant content is found, the app falls back to answering questions using **Google Gemini LLM**.
 
 ---
 
-## Demo
+## PDF Query Application Architecture
 
-The app interface includes:
+The architecture consists of the following key components:
 
-1. **File uploader** to upload PDFs.
-2. **Query input** to type your question.
-3. **Answer output** along with expandable sources for PDF-based answers.
+1. **Frontend (Streamlit)**  
+   Provides a user-friendly interface for uploading PDF files, entering queries, and viewing answers.
+
+2. **Backend**  
+   Handles requests from the frontend, extracts text from PDFs, splits it into chunks, creates embeddings, stores them in a vector database, and generates answers using LLMs.
+
+3. **AI Models**  
+   - **LLM (ChatGoogleGenerativeAI)**: Generates context-aware answers from retrieved PDF content or directly from user queries.  
+   - **Vector Embeddings**: PDF text is embedded using **GoogleGenerativeAIEmbeddings**. FAISS is used to store and efficiently retrieve these embeddings.
+
+4. **Database (FAISS)**  
+   Stores embeddings for fast retrieval of relevant content from uploaded PDFs. Vector stores are cached locally for efficiency.
 
 ---
 
-## Installation
+## Dependencies
 
-1. Clone this repository:
+Ensure you have the following installed:
+
+- Python 3.7+
+- Streamlit
+- PyPDF2
+- LangChain
+- FAISS
+- Google Generative AI
+- nest_asyncio
+
+Install dependencies with:
+
+```bash
+pip install streamlit PyPDF2 langchain faiss-cpu google-generativeai nest_asyncio
+````
+
+---
+
+## Setup
+
+1. **Clone the Repository**:
 
 ```bash
 git clone https://github.com/yourusername/pdf-qa-rag.git
 cd pdf-qa-rag
-````
-
-2. Create a virtual environment and activate it:
-
-```bash
-python -m venv venv
-source venv/bin/activate   # Linux/Mac
-venv\Scripts\activate      # Windows
 ```
 
-3. Install dependencies:
+2. **Set Google API Key in Streamlit Secrets**:
 
-```bash
-pip install -r requirements.txt
-```
-
-4. Set up your **Streamlit secrets** for Google API key:
-
-Create a file `.streamlit/secrets.toml`:
+Create `.streamlit/secrets.toml`:
 
 ```toml
-[general]
 GOOGLE_API_KEY = "your_google_api_key_here"
+```
+
+3. **Create Necessary Directories**:
+
+```text
+./vectorstore/      # Stores FAISS vector databases
 ```
 
 ---
 
-## Usage
+## Running the Application
 
-Run the Streamlit app:
+Run the app using:
 
 ```bash
 streamlit run app.py
@@ -73,76 +82,106 @@ streamlit run app.py
 1. Upload one or more PDFs (optional).
 2. Enter your question in the text input field.
 3. Click **Get Answer**.
-4. The app will either:
 
-   * Retrieve answers from PDFs (if content is relevant), or
-   * Use the general LLM to answer your query.
+   * If PDFs contain relevant content, the app retrieves the answer from the vector store.
+   * Otherwise, the app queries the LLM directly.
 
 ---
 
-## Project Structure
+## Code Overview
 
+### Importing Libraries
+
+```python
+import streamlit as st
+from PyPDF2 import PdfReader
+from langchain.text_splitter import RecursiveCharacterTextSplitter
+from langchain.vectorstores import FAISS
+from langchain.chains import RetrievalQA
+from langchain.prompts import PromptTemplate
+from langchain_google_genai import GoogleGenerativeAIEmbeddings, ChatGoogleGenerativeAI
+from pathlib import Path
+import hashlib
+import time
+import nest_asyncio
+import logging
+import traceback
 ```
-.
-├── app.py                  # Main Streamlit app
-├── vectorstore/            # Local storage for FAISS vector stores
-├── requirements.txt        # Python dependencies
-└── README.md
+
+---
+
+### Core Functions
+
+1. **PDF Hashing** – Generate unique hash for caching:
+
+```python
+def generate_pdf_hash(file_bytes):
+    return hashlib.md5(file_bytes).hexdigest()
+```
+
+2. **Load PDF Text**:
+
+```python
+def load_pdf_text(uploaded_file):
+    uploaded_file.seek(0)
+    text = ""
+    pdf_reader = PdfReader(uploaded_file)
+    for page in pdf_reader.pages:
+        page_text = page.extract_text()
+        if page_text:
+            text += page_text
+    return text
+```
+
+3. **Text Splitting**:
+
+```python
+def split_text(text):
+    splitter = RecursiveCharacterTextSplitter(chunk_size=500, chunk_overlap=50)
+    return splitter.split_text(text)
+```
+
+4. **Create Vector Store**:
+
+```python
+def create_vectorstore_from_texts(texts):
+    all_embeddings = [embeddings_model.embed_documents([chunk]) for chunk in texts]
+    return FAISS.from_embeddings(list(zip(texts, all_embeddings)), embedding=embeddings_model)
+```
+
+5. **Load Retrieval Chain**:
+
+```python
+def load_chain(vectordb):
+    llm = create_llm()
+    retriever = vectordb.as_retriever(search_kwargs={"k": 3})
+    return RetrievalQA.from_chain_type(
+        llm=llm,
+        chain_type="stuff",
+        retriever=retriever,
+        return_source_documents=True,
+        chain_type_kwargs={"prompt": prompt_template}
+    )
 ```
 
 ---
 
-## Dependencies
+### Streamlit UI
 
-* Python 3.9+
-* Streamlit
-* PyPDF2
-* LangChain
-* FAISS
-* nest\_asyncio
-* GoogleGenerativeAI
-
----
-
-## How it Works
-
-1. **PDF Upload & Text Extraction:**
-   Extract text from each uploaded PDF using `PyPDF2`.
-
-2. **Text Splitting:**
-   Split text into smaller chunks using `RecursiveCharacterTextSplitter` for better embedding and retrieval.
-
-3. **Embeddings & Vector Store:**
-   Create embeddings for each chunk using GoogleGenerativeAIEmbeddings and store in FAISS vector store.
-
-4. **RAG Query:**
-
-   * Use the vector store as a retriever for the question.
-   * Generate an answer using the **Gemini LLM** conditioned on the retrieved content.
-
-5. **Fallback to General LLM:**
-   If PDFs are missing or contain no relevant info, the app queries the LLM directly.
+* Upload PDFs (optional)
+* Enter a query
+* Click **Get Answer**
+* Answers are displayed along with PDF sources if relevant
 
 ---
 
 ## Notes
 
-* FAISS vector stores are cached locally to avoid recomputing embeddings.
-* Small delays (`time.sleep(0.2)`) are added to avoid API rate limits.
-* `nest_asyncio` is used to handle async calls in Streamlit.
-
----
-
-## License
-
-This project is licensed under the MIT License.
+* FAISS vector stores are cached to avoid recomputing embeddings.
+* Small delays (`time.sleep(0.2)`) prevent API rate limit issues.
+* `nest_asyncio` ensures async calls work smoothly in Streamlit.
 
 ---
 
 
-```
 
----
-
-If you want, I can also **add a visual diagram** of the RAG + LLM workflow and embed it in the README to make it more professional for GitHub. Do you want me to do that?
-```
