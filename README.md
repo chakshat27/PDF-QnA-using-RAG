@@ -1,4 +1,4 @@
-Here’s a polished `README.md` for your project based on your code, following the style of the example you provided but without the video demo section:
+
 
 ````markdown
 # PDF + General Q/A Application using RAG and Google Gemini
@@ -182,6 +182,6 @@ def load_chain(vectordb):
 * `nest_asyncio` ensures async calls work smoothly in Streamlit.
 
 ---
-
+''''
 
 
