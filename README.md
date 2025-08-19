@@ -1,5 +1,5 @@
 
-# PDF + General Q/A Application using RAG and Google Gemini
+# PDF + General Q/A Application
 
 This Streamlit application allows users to ask questions from uploaded PDFs using **Retrieval-Augmented Generation (RAG)**. If no PDFs are uploaded or no relevant content is found, the app falls back to answering questions using **Google Gemini LLM**.
 
