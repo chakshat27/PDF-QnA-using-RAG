@@ -28,13 +28,17 @@ The architecture consists of the following key components:
 
 Ensure you have the following installed:
 
-- Python 3.7+
-- Streamlit
-- PyPDF2
-- LangChain
-- FAISS
-- Google Generative AI
-- nest_asyncio
+-streamlit
+-PyPDF2
+-langchain==0.2.15
+-langchain-community==0.2.15
+-faiss-cpu
+-google-generativeai
+-python-dotenv
+-requests
+-langchain-google-genai==1.0.10
+-nest_asyncio
+-orjson==3.10.6
 
 Install dependencies with:
 
