@@ -212,7 +212,7 @@ Question:
 Answer:
 """)
 
-st.title("📄 PDF + General Q/A using Gemini")
+st.title("📄 PDF Q/A")
 
 uploaded_files = st.file_uploader("Upload one or more PDFs (optional)", type="pdf", accept_multiple_files=True)
 query = st.text_input("Enter your question")
@@ -338,6 +338,7 @@ if st.button("Get Answer") and query:
 
     except Exception as e:
         st.error(f"Error:\n{traceback.format_exc()}")
+
 
 
 
