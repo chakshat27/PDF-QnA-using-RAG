@@ -1,5 +1,3 @@
-RAG
-
 import streamlit as st
 from PyPDF2 import PdfReader
 from langchain.text_splitter import RecursiveCharacterTextSplitter
@@ -155,6 +153,7 @@ if st.button("Get Answer"):
 
     else:
         st.warning("Please upload PDFs and enter a question.")
+
 
 
 
